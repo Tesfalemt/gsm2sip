@@ -1544,6 +1544,8 @@ class GatewayService : Service() {
         // greppable over adb, which is how these get read when something has
         // already gone wrong and the app is not in front of anyone.
         Log.i(TAG, "LOG: $msg")
+        // And to the remote log server, when one is set (net/RemoteLog.kt).
+        com.callagent.gateway.net.RemoteLog.add(msg)
         val stamped = "${bufferTimeFormat.format(java.util.Date())}  $msg"
         synchronized(logBuffer) {
             logBuffer.add(stamped)

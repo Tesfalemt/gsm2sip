@@ -504,6 +504,19 @@
                             android:textColor="@color/text_hint"
                             android:paddingTop="6dp" />
 
+                        <TextView style="@style/CfgLabel" android:text="Remote log URL (optional)" />
+                        <EditText android:id="@+id/etCfgRemoteLog" style="@style/CfgField"
+                            android:hint="https://… — empty keeps the log on the phone"
+                            android:inputType="textUri" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Every line of the Logs screen is also posted here as JSON every couple of seconds, so the gateway can be watched from afterwards and far away. The lines include phone numbers: only use a server you control."
+                            android:textSize="12sp"
+                            android:textColor="@color/text_hint"
+                            android:paddingTop="6dp" />
+
                         <TextView style="@style/CfgLabel" android:text="Audio Codec" />
 
                         <RadioGroup

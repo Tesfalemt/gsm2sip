@@ -4,6 +4,7 @@ import android.app.Application
 import com.callagent.gateway.BuildConfig
 import android.os.StrictMode
 import android.util.Log
+import com.callagent.gateway.net.RemoteLog
 
 class GatewayApp : Application() {
     override fun onCreate() {
@@ -15,5 +16,8 @@ class GatewayApp : Application() {
             StrictMode.ThreadPolicy.Builder().permitAll().build()
         )
         Log.i("GatewayApp", "SIP-GSM Gateway v${BuildConfig.VERSION_NAME} started")
+        // Optional remote copy of the log (Settings → Remote log URL).
+        RemoteLog.init(this)
+        RemoteLog.add("SIP-GSM Gateway v${BuildConfig.VERSION_NAME} started")
     }
 }

@@ -553,6 +553,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<EditText>(R.id.etCfgPort).setText(prefs.getInt("port", 5060).toString())
         findViewById<EditText>(R.id.etCfgUser).setText(prefs.getString("user", ""))
         findViewById<EditText>(R.id.etCfgPass).setText(prefs.getString("pass", ""))
+        findViewById<EditText>(R.id.etCfgRemoteLog).setText(prefs.getString("remote_log_url", ""))
         buildOwnNumberFields(prefs)
         findViewById<CheckBox>(R.id.cbCfgAutoconnect).isChecked =
             prefs.getBoolean("autoconnect", true)
@@ -660,6 +661,7 @@ class MainActivity : AppCompatActivity() {
         val port = findViewById<EditText>(R.id.etCfgPort).text.toString().trim().toIntOrNull() ?: 5060
         val user = findViewById<EditText>(R.id.etCfgUser).text.toString().trim()
         val pass = findViewById<EditText>(R.id.etCfgPass).text.toString().trim()
+        val remoteLog = findViewById<EditText>(R.id.etCfgRemoteLog).text.toString().trim()
         // The lowest active SIM's number is the one everything that does not
         // know which SIM it is dealing with will use.
         val own = ownNumberFields.firstOrNull()?.second?.text?.toString()?.trim().orEmpty()
@@ -681,11 +683,16 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Server and username are required", Toast.LENGTH_LONG).show()
             return
         }
+        if (remoteLog.isNotEmpty() && !remoteLog.startsWith("https://")) {
+            Toast.makeText(this, "Remote log URL must start with https://", Toast.LENGTH_LONG).show()
+            return
+        }
         getSharedPreferences("gateway", MODE_PRIVATE).edit()
             .putString("server", server)
             .putInt("port", port)
             .putString("user", user)
             .putString("pass", pass)
+            .putString("remote_log_url", remoteLog)
             .putString("own_number", own)
             .also { ed ->
                 ownNumberFields.forEach { (slot, et) ->
@@ -706,6 +713,7 @@ class MainActivity : AppCompatActivity() {
                 "tls=${if (tls) "on" else "off"}, " +
                 "srtp=${if (srtp && tls) "on" else "off"}, " +
                 "ascii=${if (translit) "on" else "off"}, " +
+                "remote log ${if (remoteLog.isEmpty()) "off" else "on"}, " +
                     "agent volume ${if (agentVolStep > 0) "+$agentVolStep" else "$agentVolStep"})"
         )
         Toast.makeText(this, "Saved — reconnecting", Toast.LENGTH_SHORT).show()
