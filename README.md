@@ -165,6 +165,21 @@ Only the Magisk module needs to be installed — it includes the APK and handles
 6. **Start**: the gateway registers and begins bridging calls; the header pill
    shows **Online** once registration succeeds (tap it to retry)
 
+### Remote log (optional)
+
+**Settings → Remote log URL** sends a copy of every line on the Logs screen to a log server, so a gateway in another country can be watched live. That covers registration, SIP responses, GSM call states, bridge and RTP stats, and SMS.
+
+- **Off** while the field is empty. Only `https://` URLs are accepted.
+- Lines are posted every 2 seconds as JSON:
+
+  ```json
+  {"launch": "g2s-k3x9", "entries": [{"t": 1792720000000, "level": "info", "msg": "SIP: Registered"}]}
+  ```
+
+  `launch` changes each time the app starts. `level` is `error` for lines containing `ERROR`, otherwise `info`.
+- A post that fails is dropped, never retried or logged, so a dead server can't stall the gateway.
+- **The lines contain phone numbers.** Only point it at a server you control.
+
 ### What the SIP leg carries
 
 - **Request-URI / To** — the number that was dialled, i.e. the gateway SIM's
