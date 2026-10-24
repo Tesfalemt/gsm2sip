@@ -1309,6 +1309,12 @@ class GatewayService : Service() {
         try {
             sip.start()
             broadcastLog("[v${BuildConfig.VERSION_NAME}] SIP client started, registering with $cfgServer:$cfgPort")
+            // Which audio profile the next call will use, said up front: the
+            // profile is otherwise picked lazily at the first call, so a
+            // gateway watched remotely could not tell before a call whether it
+            // recognised the device.
+            broadcastLog("Audio profile: ${GsmCallManager.profile.name} " +
+                "(board=${android.os.Build.BOARD}, hw=${android.os.Build.HARDWARE})")
             broadcastStatus("STARTING", "Registering with $cfgServer")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start SIP client: ${e.message}", e)
