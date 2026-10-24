@@ -52,13 +52,63 @@ fi
 # ── 1. audio policy (no root needed) — the decisive one ──────────────
 echo
 echo "=== 1. Audio policy: is there a route to the modem uplink? ==="
-POL=/vendor/etc/audio_policy_configuration.xml
-if sh_ "grep -q incall_music_uplink $POL && echo y" | grep -q y; then
-    ok "incall_music_uplink mixPort declared"
-    sh_ "grep -A4 'mixPort name=\"incall_music_uplink\"' $POL" | grep -i channelmasks | sed 's/^/            /'
-    sh_ "grep -i 'sink=\"Telephony Tx\"' $POL" | head -1 | sed 's/^/            /'
+# Ask audioserver which policy it actually loaded rather than guessing the
+# file: the Galaxy A52 5G ships an audio_policy_configuration.xml with three
+# mixPorts and no telephony device, yet loads audio_policy_configuration_base.xml,
+# whose voice_tx mixPort is routed to Telephony Tx.  Reading the first file
+# alone reported "nothing to inject into" on a phone that has the route.
+#
+# Any output mixPort that lists Telephony Tx among its devices is a way into
+# the uplink — incall_music_uplink on the Poco X3 NFC, voice_tx on AOSP-style
+# policies (Pixel, Samsung's Qualcomm phones).
+# Two dump layouts: Android 11 has "output N:" blocks with "- name: X";
+# Android 14 has an "- Output MixPorts (N):" list of 'N. "X"; 0x… (flags)'.
+POLDUMP=$(sh_ 'dumpsys media.audio_policy')
+SRC=$(echo "$POLDUMP" | sed -n 's/^ *Config source: *//p' | head -1)
+[ -n "$SRC" ] && echo "            loaded policy: $SRC"
+TX_PORTS=$(echo "$POLDUMP" | awk '
+    /^[^ ]/                                    { inout = 0 }
+    /^ *output [0-9]+:/ || /- Output MixPorts/ { inout = 1; next }
+    /^ *input [0-9]+:/                         { inout = 0; next }
+    /- (Input MixPorts|Declared devices|Audio Routes) \(/ { inout = 0; next }
+    /^ *[0-9]+\. Handle:/                       { inout = 0; next }
+    inout && /^ *- name: /         { sub(/^ *- name: /, ""); port = $0 }
+    inout && /^ *[0-9]+\. "[^"]*"; 0x/ { match($0, /"[^"]*"/); port = substr($0, RSTART + 1, RLENGTH - 2) }
+    inout && /AUDIO_DEVICE_OUT_TELEPHONY_TX/ { print port }' | sort -u)
+if [ -z "$TX_PORTS" ]; then
+    # Older Android, or dumpsys not allowed: fall back to the XML files.
+    for f in $(sh_ 'ls /odm/etc/audio_policy_configuration*.xml /vendor/etc/audio_policy_configuration*.xml 2>/dev/null'); do
+        sh_ "grep -q 'sink=\"Telephony Tx\"' $f && echo y" | grep -q y || continue
+        TX_PORTS=$(sh_ "grep -A1 'sink=\"Telephony Tx\"' $f" | grep -o 'sources="[^"]*"' | cut -d'"' -f2 | tr ',' '\n' | sort -u)
+        [ -n "$TX_PORTS" ] && { echo "            (from $f — dumpsys gave nothing)"; break; }
+    done
+fi
+if [ -n "$TX_PORTS" ]; then
+    ok "output routed to Telephony Tx: $(echo $TX_PORTS)"
 else
-    no "no incall_music_uplink mixPort — nothing to inject the agent into"
+    no "no output routed to Telephony Tx — nothing to inject the agent into"
+fi
+
+# The HAL's own mixer paths for the two in-call usecases.  Which
+# mixer_paths file the HAL picks depends on the sound card name (root to
+# read), so this looks at the default one.  The front-end named here is the
+# one a DeviceProfile has to drive.
+MP=/vendor/etc/mixer_paths.xml
+if sh_ "[ -r $MP ] && echo y" | grep -q y; then
+    path_ctls() {  # $1 = mixer path name -> its ctl names, one per line
+        sh_ "grep -A4 '<path name=\"$1\">' $MP" | sed '1d;/<\/path>/,$d' \
+            | grep -o 'name="[^"]*"' | cut -d'"' -f2
+    }
+    IM=$(path_ctls incall_music_uplink)
+    [ -n "$IM" ] \
+        && ok "mixer path incall_music_uplink: $(echo "$IM" | paste -sd, -)" \
+        || unk "no incall_music_uplink mixer path in $MP (the S4 Mini had none and still worked)"
+    RD=$(path_ctls incall-rec-downlink)
+    [ -n "$RD" ] \
+        && ok "mixer path incall-rec-downlink: $(echo "$RD" | paste -sd, -)" \
+        || unk "no incall-rec-downlink mixer path in $MP"
+else
+    unk "$MP not readable"
 fi
 
 # ── 2. HAL (root) ────────────────────────────────────────────────────

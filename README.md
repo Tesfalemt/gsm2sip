@@ -44,6 +44,7 @@ remote actually offered rather than failing a call over a preference.
 | Xiaomi Poco X3 NFC (`surya`) | Qualcomm SM6150/SM7150, WCD9375 | digital, via `incall_music` → `Telephony Tx` | digital, via `VOICE_DOWNLINK` | **fully working** |
 | Samsung Galaxy S4 Mini (`serranolte`) | Qualcomm MSM8960, WCD9304 | digital, via `incall_music` | digital, via `VOC_REC_*` | **fully working** |
 | Samsung Galaxy S10e | Exynos 9820, CS47L93 | no path | no path | not usable |
+| Samsung Galaxy A52 5G (`a52xq`, SM-A526B) | Qualcomm SM7225 (`lito`) | declared: `voice_tx` → `Telephony Tx`, `Incall_Music` MultiMedia9 | declared: `VOC_REC_DL` on MultiMedia9 | profile written, **not yet tried on a call** |
 
 **The Poco X3 NFC is the reference device and works fully**: G.722 wideband in
 both directions, entirely through the modem, with the handset's own microphone
@@ -71,7 +72,10 @@ tools/check-device.sh [adb-serial]
 ```
 
 The audio-policy check needs no root, so a phone can be vetted before rooting
-it.  The HAL and mixer checks need Magisk with Superuser access set to
+it.  It asks audioserver which policy it loaded (`dumpsys media.audio_policy`)
+rather than reading one file: the A52 ships an `audio_policy_configuration.xml`
+with no telephony device at all, but loads `audio_policy_configuration_base.xml`,
+which routes `voice_tx` to `Telephony Tx`.  The HAL and mixer checks need Magisk with Superuser access set to
 "Apps and ADB".
 
 What has actually been checked so far:
@@ -81,6 +85,7 @@ What has actually been checked so far:
 | Poco X3 NFC | SM6150/SM7150 | Xiaomi (MIUI) | fully working, verified on live calls |
 | Galaxy S4 Mini | MSM8960 | LineageOS 16 | fully working, verified on a live call |
 | Galaxy S10e | Exynos 9820 | — | no path in either direction |
+| Galaxy A52 5G | SM7225 | Samsung, Android 11 and 14 | both paths declared in the vendor config (read without root; Android 14 adds `incall_music_uplink`); `lito()` profile written from it, untested on a call |
 
 Everything the working profile depends on is generic Qualcomm audio, so other
 Qualcomm phones are plausible candidates — but the deciding factors live in the
