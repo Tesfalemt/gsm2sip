@@ -85,7 +85,7 @@ What has actually been checked so far:
 | Poco X3 NFC | SM6150/SM7150 | Xiaomi (MIUI) | fully working, verified on live calls |
 | Galaxy S4 Mini | MSM8960 | LineageOS 16 | fully working, verified on a live call |
 | Galaxy S10e | Exynos 9820 | — | no path in either direction |
-| Galaxy A52 5G | SM7225 | Samsung (One UI 3, Android 11) | both paths declared in the vendor config (read without root); `lito()` profile written from it, untested on a call |
+| Galaxy A52 5G | SM7225 | Samsung, Android 11 and 14 | both paths declared in the vendor config (read without root; Android 14 adds `incall_music_uplink`); `lito()` profile written from it, untested on a call |
 
 Everything the working profile depends on is generic Qualcomm audio, so other
 Qualcomm phones are plausible candidates — but the deciding factors live in the

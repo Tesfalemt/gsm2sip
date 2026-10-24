@@ -953,7 +953,9 @@ data class DeviceProfile(
         /** Qualcomm SM7225 "lito" (Snapdragon 750G) — Samsung Galaxy A52 5G.
          *
          *  UNVERIFIED ON A LIVE CALL.  Written from the vendor image of an
-         *  SM-A526B (Android 11, A526BXXU1AUAH) read without root:
+         *  SM-A526B (Android 11, A526BXXU1AUAH) read without root, and
+         *  re-checked on Android 14 (A526BXXSCGYC1), which keeps all of it and
+         *  adds an incall_music_uplink mixPort (INCALL_MUSIC flag, stereo):
          *
          *    audio policy  — audioserver loads audio_policy_configuration_base.xml
          *      (not the three-port audio_policy_configuration.xml beside it):
@@ -1045,8 +1047,10 @@ data class DeviceProfile(
             playbackLeaksIntoCapture = false,
             playbackToTelephonyTx = true,
             incallMusicBeforeTrack = true,
-            // voice_tx takes mono or stereo; stereo also matches an
-            // incall_music_uplink-style port if Samsung's HAL exposes one.
+            // Load-bearing on Android 14 (A526BXXSCGYC1): the policy there
+            // also routes incall_music_uplink (AUDIO_OUTPUT_FLAG_INCALL_MUSIC,
+            // stereo only) to Telephony Tx, the Poco X3 NFC arrangement.  A
+            // mono track could only match voice_tx.
             playbackStereo = true,
             // Left at the default until routedTo=18 is confirmed: the fast
             // path here is low-latency-playback on MultiMedia5, which is wired

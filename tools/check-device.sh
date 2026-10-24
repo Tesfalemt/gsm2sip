@@ -61,10 +61,19 @@ echo "=== 1. Audio policy: is there a route to the modem uplink? ==="
 # Any output mixPort that lists Telephony Tx among its devices is a way into
 # the uplink — incall_music_uplink on the Poco X3 NFC, voice_tx on AOSP-style
 # policies (Pixel, Samsung's Qualcomm phones).
-TX_PORTS=$(sh_ 'dumpsys media.audio_policy' | awk '
-    /^ *output [0-9]+:/            { inout = 1; next }
-    /^ *input [0-9]+:/             { inout = 0; next }
+# Two dump layouts: Android 11 has "output N:" blocks with "- name: X";
+# Android 14 has an "- Output MixPorts (N):" list of 'N. "X"; 0x… (flags)'.
+POLDUMP=$(sh_ 'dumpsys media.audio_policy')
+SRC=$(echo "$POLDUMP" | sed -n 's/^ *Config source: *//p' | head -1)
+[ -n "$SRC" ] && echo "            loaded policy: $SRC"
+TX_PORTS=$(echo "$POLDUMP" | awk '
+    /^[^ ]/                                    { inout = 0 }
+    /^ *output [0-9]+:/ || /- Output MixPorts/ { inout = 1; next }
+    /^ *input [0-9]+:/                         { inout = 0; next }
+    /- (Input MixPorts|Declared devices|Audio Routes) \(/ { inout = 0; next }
+    /^ *[0-9]+\. Handle:/                       { inout = 0; next }
     inout && /^ *- name: /         { sub(/^ *- name: /, ""); port = $0 }
+    inout && /^ *[0-9]+\. "[^"]*"; 0x/ { match($0, /"[^"]*"/); port = substr($0, RSTART + 1, RLENGTH - 2) }
     inout && /AUDIO_DEVICE_OUT_TELEPHONY_TX/ { print port }' | sort -u)
 if [ -z "$TX_PORTS" ]; then
     # Older Android, or dumpsys not allowed: fall back to the XML files.
