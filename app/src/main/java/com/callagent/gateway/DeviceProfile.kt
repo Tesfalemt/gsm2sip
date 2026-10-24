@@ -406,6 +406,13 @@ data class DeviceProfile(
                 board.contains("sm6150") || board.contains("sm7150") ->
                     sm6150()
 
+                // Snapdragon 750G (SM7225, "lito") — e.g. Galaxy A52 5G.
+                // Same HAL family as SM6150, but injection and capture both
+                // sit on MultiMedia9 and the policy calls the uplink port
+                // voice_tx, so it gets its own profile.
+                board.contains("lito") ->
+                    lito()
+
                 // Generic Qualcomm — try incall_music, skip WCD9304-specific controls
                 hw.contains("qcom") || hw.contains("qualcomm") ->
                     genericQualcomm()
@@ -939,6 +946,112 @@ data class DeviceProfile(
             // 100ms of playback buffer is 100ms of latency on a live call.
             // AudioTrack's own minimum for 16 kHz stereo is already ~80ms.
             playbackBufferMs = 0,
+            routeChangeDelayMs = 500,
+            appopsPropagationMs = 300,
+        )
+
+        /** Qualcomm SM7225 "lito" (Snapdragon 750G) — Samsung Galaxy A52 5G.
+         *
+         *  UNVERIFIED ON A LIVE CALL.  Written from the vendor image of an
+         *  SM-A526B (Android 11, A526BXXU1AUAH) read without root:
+         *
+         *    audio policy  — audioserver loads audio_policy_configuration_base.xml
+         *      (not the three-port audio_policy_configuration.xml beside it):
+         *      mixPort voice_tx (PCM 16-bit, 8/16/48 kHz, mono or stereo)
+         *      routed to Telephony Tx, and "primary input" offering
+         *      VOICE_UPLINK / VOICE_DNLINK channel masks.
+         *    mixer_paths.xml —
+         *      incall_music_uplink  = Incall_Music Audio Mixer MultiMedia9
+         *      incall-rec-downlink  = MultiMedia9 Mixer VOC_REC_DL
+         *      incall-rec-uplink    = MultiMedia9 Mixer VOC_REC_UL
+         *      (Incall_Music ports 2 and 5 are named elsewhere in the file.)
+         *      Voice Rx Device Mute / Voice Tx Mute are {mute, vsid, ramp_ms}
+         *      arrays, as on SM6150.
+         *    audio_platform_info.xml — USECASE_INCALL_MUSIC_UPLINK and the
+         *      USECASE_INCALL_REC_* usecases are declared.
+         *
+         *  The HAL is Samsung's build (audio.primary.lito.so, unreadable
+         *  without root), so whether it honours all of this is what the first
+         *  call has to show.  The shape follows sm6150 — the verified profile
+         *  on the nearest HAL — with the mixer writes narrowed to the ports
+         *  this vendor config names, and nothing touching the codec's own mic
+         *  controls (TX DEC*, ADC*): their resting values are not known here,
+         *  and a wrong restore would leave the phone's microphone dead.
+         *
+         *  Check on the first call: playback reports routedTo=18
+         *  (TYPE_TELEPHONY), 'Mixer AFTER' shows IncallMM9 On, and capture
+         *  rawCapRMS climbs well above the silence floor when the far end
+         *  talks.  Levels and gates below are starting points, not
+         *  measurements. */
+        fun lito() = DeviceProfile(
+            name = "SM7225 lito (Galaxy A52 5G)",
+            mixerSetupCmd = buildString {
+                // Keep the uplink stream open for the injected agent audio;
+                // the mic leg is taken out by silenceLocalAudio.
+                append("tinymix 'Voice Tx Mute' 0 4294967295 20 2>/dev/null; ")
+                append("tinymix 'Voice Tx Device Mute' 1 4294967295 20 2>/dev/null; ")
+                append("tinymix 'Incall_Music Audio Mixer MultiMedia9' 1 2>/dev/null; ")
+                append("tinymix 'Incall_Music Audio Mixer MultiMedia2' 1 2>/dev/null; ")
+                append("tinymix 'Incall_Music Audio Mixer MultiMedia5' 1 2>/dev/null")
+            },
+            mixerRestoreCmd = buildString {
+                append("tinymix 'Voice Rx Device Mute' 0 4294967295 20 2>/dev/null; ")
+                append("tinymix 'Voice Tx Device Mute' 0 4294967295 20 2>/dev/null; ")
+                append("tinymix 'Voice Tx Mute' 0 4294967295 20 2>/dev/null; ")
+                append("tinymix 'Incall_Music Audio Mixer MultiMedia9' 0 2>/dev/null; ")
+                append("tinymix 'Incall_Music Audio Mixer MultiMedia2' 0 2>/dev/null; ")
+                append("tinymix 'Incall_Music Audio Mixer MultiMedia5' 0 2>/dev/null; ")
+                append("tinymix 'MultiMedia9 Mixer VOC_REC_DL' 0 2>/dev/null; ")
+                append("tinymix 'MultiMedia9 Mixer VOC_REC_UL' 0 2>/dev/null")
+            },
+            mixerIncallMusicCmd = buildString {
+                append("tinymix 'Incall_Music Audio Mixer MultiMedia9' 1 2>/dev/null; ")
+                append("tinymix 'Voice Tx Mute' 0 4294967295 20 2>/dev/null; ")
+                // The HAL rewrites the voice mutes while it brings the call
+                // up (seen on SM6150), so assert the mic mute again here.
+                append("tinymix 'Voice Tx Device Mute' 1 4294967295 20 2>/dev/null")
+            },
+            // VoiceMMode1 / VoiceMMode2, as on SM6150: mixer_paths here routes
+            // voice calls through voicemmode1-call.
+            halCallActiveVsids = listOf("11c05000", "11dc5000"),
+            captureSilenceFrames = 300,
+            silenceLocalAudio = true,
+            // Downlink only: the uplink carries what we inject, and recording
+            // it feeds the agent its own voice (the SM6150 lesson).
+            mixerCaptureCmd = buildString {
+                append("tinymix 'MultiMedia9 Mixer VOC_REC_UL' 0 2>/dev/null; ")
+                append("echo -n 'MM9_DL='; tinymix 'MultiMedia9 Mixer VOC_REC_DL' 2>&1; ")
+                append("echo -n 'MM9_UL='; tinymix 'MultiMedia9 Mixer VOC_REC_UL' 2>&1")
+            },
+            mixerVerifyCmd = buildString {
+                append("echo -n 'IncallMM9='; tinymix 'Incall_Music Audio Mixer MultiMedia9' 2>&1; ")
+                append("echo -n 'IncallMM2='; tinymix 'Incall_Music Audio Mixer MultiMedia2' 2>&1; ")
+                append("echo -n 'IncallMM5='; tinymix 'Incall_Music Audio Mixer MultiMedia5' 2>&1; ")
+                append("echo -n 'VocRecDL9='; tinymix 'MultiMedia9 Mixer VOC_REC_DL' 2>&1; ")
+                append("echo -n 'VocRecUL9='; tinymix 'MultiMedia9 Mixer VOC_REC_UL' 2>&1")
+            },
+            musicVolPercent = 20,
+            captureGain = 1,
+            playbackGain = 2,
+            // Digital capture arrives near full scale on the verified
+            // devices; 100 is the S4 Mini's gate, measured against a modem
+            // silence floor of 6-174.  Re-measure here.
+            noiseGateThreshold = 100,
+            echoGateThreshold = 300,
+            doubleTalkRatio = 1.5f,
+            requireSpeakerMode = true,
+            incallMusicParam = "incall_music_enabled",
+            voiceDownlinkWorks = true,
+            playbackLeaksIntoCapture = false,
+            playbackToTelephonyTx = true,
+            incallMusicBeforeTrack = true,
+            // voice_tx takes mono or stereo; stereo also matches an
+            // incall_music_uplink-style port if Samsung's HAL exposes one.
+            playbackStereo = true,
+            // Left at the default until routedTo=18 is confirmed: the fast
+            // path here is low-latency-playback on MultiMedia5, which is wired
+            // to the speaker (QUIN_MI2S_RX).
+            playbackLowLatency = false,
             routeChangeDelayMs = 500,
             appopsPropagationMs = 300,
         )
