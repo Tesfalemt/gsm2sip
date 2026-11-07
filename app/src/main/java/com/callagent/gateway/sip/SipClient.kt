@@ -249,7 +249,15 @@ class SipClient(
     }
 
     private fun handlePacket(data: String, address: Pair<String, Int>) {
-        val msg = SipMessage.parse(data) ?: return
+        val msg = SipMessage.parse(data) ?: run {
+            uiLog("SIP: unparseable message (${data.length} chars) — ignored")
+            return
+        }
+        // Requests from the server are rare and each one matters; OPTIONS is
+        // the exception, a keepalive that would drown the rest.
+        if (msg.isRequest && msg.method != "OPTIONS") {
+            uiLog("SIP ⇐ ${msg.method} (Call-ID ${if (msg.callId != null) "present" else "MISSING"})")
+        }
 
         // OPTIONS keepalive from server
         if (msg.isRequest && msg.method == "OPTIONS") {
@@ -462,7 +470,13 @@ class SipClient(
     // ── Incoming INVITE ─────────────────────────────────
 
     private fun handleIncomingInvite(msg: SipMessage, address: Pair<String, Int>) {
-        val callId = msg.callId ?: return
+        val callId = msg.callId ?: run {
+            // Without a Call-ID there is nothing to answer with, but dropping
+            // it unannounced leaves only a 408 at the server to explain why
+            // the phone never rang.
+            uiLog("Incoming INVITE has no Call-ID — ignored")
+            return
+        }
         Log.i(TAG, "Incoming INVITE call-id=$callId from=${msg.callerNumber}")
 
         // Send 100 Trying

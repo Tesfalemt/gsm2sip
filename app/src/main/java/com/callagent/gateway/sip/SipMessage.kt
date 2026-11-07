@@ -218,14 +218,58 @@ class SipMessage private constructor(
                 val line = lines[i]
                 val colonIdx = line.indexOf(':')
                 if (colonIdx > 0) {
-                    val key = line.substring(0, colonIdx).trim().lowercase()
+                    val name = line.substring(0, colonIdx).trim().lowercase()
+                    val key = COMPACT_FORMS[name] ?: name
                     val value = line.substring(colonIdx + 1).trim()
-                    headers[key] = value
+                    // Repeated Via / Record-Route lines are one comma-separated
+                    // list (RFC 3261 §7.3.1).  Keeping only the last copy loses
+                    // hops, and a response that does not echo every Via in
+                    // order matches no transaction at the server.  Other
+                    // headers keep last-wins: two WWW-Authenticate challenges
+                    // (MD5 and SHA-256) are separate values, not one list.
+                    headers[key] = headers[key]
+                        ?.takeIf { key in LIST_HEADERS }
+                        ?.let { "$it, $value" } ?: value
                 }
             }
 
             return SipMessage(startLine, headers, body).also { it.raw = data }
         }
+
+        /**
+         * Compact header names (RFC 3261 §7.3.3 and the extensions that
+         * register one), mapped to the full names looked up everywhere else.
+         *
+         * A server may send any header in either form, and Telnyx does so on
+         * every request once compact headers are on for the connection: an
+         * inbound INVITE then arrives with `i:` instead of Call-ID, `v:`
+         * instead of Via.  Without the mapping it parses with no Call-ID,
+         * is dropped without a reply, and the server gives up with a 408.
+         */
+        private val COMPACT_FORMS = mapOf(
+            "a" to "accept-contact",
+            "b" to "referred-by",
+            "c" to "content-type",
+            "d" to "request-disposition",
+            "e" to "content-encoding",
+            "f" to "from",
+            "i" to "call-id",
+            "j" to "reject-contact",
+            "k" to "supported",
+            "l" to "content-length",
+            "m" to "contact",
+            "n" to "identity-info",
+            "o" to "event",
+            "r" to "refer-to",
+            "s" to "subject",
+            "t" to "to",
+            "u" to "allow-events",
+            "v" to "via",
+            "x" to "session-expires",
+            "y" to "identity"
+        )
+
+        private val LIST_HEADERS = setOf("via", "record-route", "route")
 
         private fun extractTag(header: String): String? {
             val idx = header.indexOf(";tag=")
