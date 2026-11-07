@@ -219,7 +219,13 @@ class TlsSipTransport(
                 throw java.io.EOFException("TLS connection closed by server")
             }
             pending.append(String(buf, 0, n, Charsets.UTF_8))
-            takeMessage()?.let { it to peer }
+            takeMessage()?.let { it to peer } ?: run {
+                // Normal for a message split across reads, but a message that
+                // never completes is otherwise invisible: the server times out
+                // and nothing here says why.
+                if (pending.isNotEmpty()) log("TLS: read $n bytes, holding ${describePending()}")
+                null
+            }
         } catch (_: SocketTimeoutException) {
             null
         }
@@ -256,6 +262,16 @@ class TlsSipTransport(
             pending.delete(0, total)
             return msg
         }
+    }
+
+    /** What is buffered, without any of its content: sizes and the framing. */
+    private fun describePending(): String {
+        val headerEnd = pending.indexOf("\r\n\r\n")
+        if (headerEnd < 0) return "${pending.length} chars, headers not yet complete"
+        val declared = CONTENT_LENGTH.find(pending.substring(0, headerEnd))
+            ?.groupValues?.get(1)
+        return "${pending.length} chars, headers $headerEnd, Content-Length ${declared ?: "missing"}" +
+            ", body so far ${pending.length - headerEnd - 4}"
     }
 
     override fun close() {
